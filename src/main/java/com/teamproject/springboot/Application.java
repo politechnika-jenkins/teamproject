@@ -13,7 +13,6 @@ public class Application {
     String index() {
         return "Hello World!";
     }
-//test
     public static void main(String[] args) {
         SpringApplication.run(Application.class, args);
     }
