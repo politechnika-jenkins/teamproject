@@ -1,0 +1,59 @@
+def checkoutRepository(def repoDir) {
+    checkout(
+            [$class           : 'GitSCM',
+             branches         : [[name: ghprbSourceBranch]],
+             extensions       : [
+                     [$class: 'RelativeTargetDirectory', relativeTargetDir: repoDir],
+                     [$class: 'LocalBranch', localBranch: ghprbSourceBranch]],
+             userRemoteConfigs: [[credentialsId: 'github-service-account', url: ghprbAuthorRepoGitUrl]]])
+
+}
+def testApplication (def repoDir) {
+    dir(repoDir) {
+        sh "mvn test"
+    }
+}
+def handleError(def err) {
+    echo "${err}"
+    echo "${err.toString()}"
+    echo "${err.getMessage()}"
+    err.printStackTrace()
+    currentBuild.result = "FAILURE"
+}
+
+def reviewPullRequest(boolean succeeded) {
+    def body
+    if(succeeded) {
+        body = '{\\"body\\":\\"Tests successful\\",\\"event\\":\\"APPROVE\\"}'
+        sh "echo ${body} > body.json"
+    } else {
+        body = '{\\"body\\":\\"Tests failed, visit Jenkins to see the logs\\",\\"event\\":\\"REQUEST_CHANGES\\"}'
+        sh "echo ${body} > body.json"
+    }
+
+    withCredentials([string(credentialsId: 'github-access-token', variable: 'token')]) {
+        sh "curl -X POST -H 'Authorization: token ${token}' https://api.github.com/repos/${ghprbGhRepository}/pulls/${ghprbPullId}/reviews -d @body.json"
+    }
+}
+node() {
+    def repoDir = 'application_repository'
+    try {
+
+        //checkout app
+        checkoutRepository(repoDir)
+        //build and test app
+
+        testApplication(repoDir)
+        //review tests somehow
+        reviewPullRequest(true)
+        //approve the PR
+
+    } catch (err) {
+        reviewPullRequest(false)
+        handleError(err)
+
+    } finally {
+        cleanWs()
+    }
+
+}
