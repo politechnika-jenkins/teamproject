@@ -54,7 +54,7 @@ def handleError(def err) {
     currentBuild.result = "FAILURE"
 }
 
-def pushImageAsLatest(def registryURL, def imageNamespace) {
+def pushImageAsLatest(def registryURL, def imageNamespace, def imageTag) {
     sh "docker tag ${registryURL}/${imageNamespace}:${imageTag} ${registryURL}/${imageNamespace}:latest"
     sh "docker push ${registryURL}/${imageNamespace}:latest"
 }
