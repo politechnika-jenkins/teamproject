@@ -9,4 +9,3 @@ public class ExampleTest {
         Assert.assertTrue(true);
     }
 }
-}
