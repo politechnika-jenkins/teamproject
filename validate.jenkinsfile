@@ -30,6 +30,7 @@ def reviewPullRequest(boolean succeeded) {
         body = '{\\"body\\":\\"Tests failed, visit Jenkins to see the logs\\",\\"event\\":\\"REQUEST_CHANGES\\"}'
         sh "echo ${body} > body.json"
     }
+    
     withCredentials([string(credentialsId: 'github-access-token', variable: 'token')]) {
         sh "curl -X POST -H 'Authorization: token ${token}' https://api.github.com/repos/${ghprbGhRepository}/pulls/${ghprbPullId}/reviews -d @body.json"
     }
