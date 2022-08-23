@@ -1,0 +1,89 @@
+def checkoutRepository(def repoDir) {
+    checkout(
+            [$class           : 'GitSCM',
+             branches         : [[name: ghprbTargetBranch]],
+             extensions       : [
+                     [$class: 'RelativeTargetDirectory', relativeTargetDir: repoDir],
+                     [$class: 'LocalBranch', localBranch: ghprbTargetBranch]],
+             userRemoteConfigs: [[credentialsId: 'github-service-account', url: ghprbAuthorRepoGitUrl]]])
+
+}
+
+def mergePRLocally(def repoDir) {
+    dir(repoDir) {
+        sh "git checkout ${ghprbSourceBranch}"
+        sh "git checkout ${ghprbTargetBranch}"
+        sh "git merge ${ghprbSourceBranch} --no-ff"
+    }
+
+}
+
+def buildApplication(def repoDir) {
+    dir(repoDir) {
+        sh "mvn package"
+    }
+}
+
+def pushChangesToRemote(def repoDir) {
+    dir(repoDir) {
+        withCredentials([string(credentialsId: 'github-access-token', variable: 'token')]) {
+            repoURL = "https://${token}@github.com/${ghprbGhRepository}"
+            sh "git remote set-url origin ${repoURL}"
+            sh "git push origin ${ghprbTargetBranch}"
+        }
+    }
+}
+
+def buildAndPushDockerImage(def repoDir, def registryURL, def imageNamespace, def imageTag) {
+    dir(repoDir) {
+        sh "docker build -t ${registryURL}/${imageNamespace}:${imageTag} ."
+    }
+    withCredentials([usernamePassword(credentialsId: 'acr_credentials', passwordVariable: 'acr_password', usernameVariable: 'acr_username')]) {
+        sh "docker login ${registryURL} --username ${acr_username} --password ${acr_password} "
+    }
+    dir(repoDir) {
+        sh "docker push ${registryURL}/${imageNamespace}:${imageTag}"
+    }
+}
+
+def handleError(def err) {
+    echo "${err}"
+    echo "${err.toString()}"
+    echo "${err.getMessage()}"
+    err.printStackTrace()
+    currentBuild.result = "FAILURE"
+}
+
+def pushImageAsLatest(def registryURL, def imageNamespace) {
+    sh "docker tag ${registryURL}/${imageNamespace}:${imageTag} ${registryURL}/${imageNamespace}:latest"
+    sh "docker push ${registryURL}/${imageNamespace}:latest"
+}
+
+node() {
+    def repoDir = 'application_repository'
+    def registryURL = 'pwacr.azurecr.io'
+    def imageNamespace = 'java-hello-world'
+    def imageTag = "${ghprbTargetBranch}_${ghprbPullId}"
+
+    try {
+
+        //checkout app
+        checkoutRepository(repoDir)
+        mergePRLocally(repoDir)
+
+        buildApplication(repoDir)
+        buildAndPushDockerImage(repoDir, registryURL, imageNamespace, imageTag)
+        //review tests somehow
+        pushChangesToRemote(repoDir)
+        //approve the PR
+        if (ghprbTargetBranch.equals('main')) {
+            pushImageAsLatest(registryURL, imageNamespace, imageTag)
+        }
+    } catch (err) {
+        handleError(err)
+
+    } finally {
+        cleanWs()
+    }
+
+}
