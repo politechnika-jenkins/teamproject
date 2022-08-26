@@ -11,9 +11,7 @@ public class Application {
 
     @RequestMapping("/")
     String index() {
-        return "Hello Dear World! \n" +
-                "Łukasz i Iwonka\n" +
-                "KOTY";
+        return "Test";
     }
 
     public static void main(String[] args) {
