@@ -59,6 +59,26 @@ def pushImageAsLatest(def registryURL, def imageNamespace, def imageTag) {
     sh "docker push ${registryURL}/${imageNamespace}:latest"
 }
 
+def checkMergeStateStatus() {
+    def body = '{\"query\":\"query{repository(owner:\\"politechnika-jenkins\\",name:\\"teamproject\\"){pullRequest(number: 8){mergeStateStatus}}}\"}'
+//     sh "echo ${body} > body.json"
+    writeFile file: 'body.json', text: body
+    sh 'cat body.json'
+    withCredentials([string(credentialsId: 'github-access-token', variable: 'token')]) {
+       def output = sh returnStdout: true, script: "curl -H 'Authorization: bearer ${token}' -H 'Accept: application/vnd.github.merge-info-preview+json'-X POST https://api.github.com/graphql -d @body.json"
+       echo output
+       writeFile file: 'output.json', text: output
+      def stateStatus = sh returnStdout: true, script: "jq -r '.data.repository.pullRequest.mergeStateStatus' output.json"
+      echo stateStatus
+      if (!stateStatus.equals("CLEAR")) {
+        error("PR cannot be completed due to GitHub reasons")
+      }
+    }
+}
+
+
+
+
 node() {
     def repoDir = 'application_repository'
     def registryURL = 'pwacr.azurecr.io'
@@ -67,6 +87,7 @@ node() {
 
     try {
 
+        checkMergeStateStatus()
         //checkout app
         checkoutRepository(repoDir)
         mergePRLocally(repoDir)
