@@ -15,7 +15,6 @@ def mergePRLocally(def repoDir) {
         sh "git checkout ${ghprbTargetBranch}"
         sh "git merge ${ghprbSourceBranch} --no-ff"
     }
-
 }
 
 def buildApplication(def repoDir) {
@@ -51,6 +50,7 @@ def handleError(def err) {
     echo "${err.toString()}"
     echo "${err.getMessage()}"
     err.printStackTrace()
+    postPRComment("Deployment failed with error message: ${err.getMessage()}.")
     currentBuild.result = "FAILURE"
 }
 
@@ -60,8 +60,9 @@ def pushImageAsLatest(def registryURL, def imageNamespace, def imageTag) {
 }
 
 def checkMergeStateStatus() {
-    def body = '{\"query\":\"query{repository(owner:\\"politechnika-jenkins\\",name:\\"teamproject\\"){pullRequest(number: 8){mergeStateStatus}}}\"}'
-//     sh "echo ${body} > body.json"
+    def repoOwner = ghprbGhRepository.split('/')[0]
+    def repoName = ghprbGhRepository.split('/')[1]
+    def body = /{"query":"query{repository(owner:\"${repoOwner}\",name:\"${repoName}\"){pullRequest(number: ${ghprbPullId}){mergeStateStatus}}}"}/
     writeFile file: 'body.json', text: body
     sh 'cat body.json'
     withCredentials([string(credentialsId: 'github-access-token', variable: 'token')]) {
@@ -71,12 +72,19 @@ def checkMergeStateStatus() {
       def stateStatus = sh returnStdout: true, script: "jq -r '.data.repository.pullRequest.mergeStateStatus' output.json"
       echo stateStatus
       if (!stateStatus.equals("CLEAR")) {
-        error("PR cannot be completed due to GitHub reasons")
+        error("Deployment cannot be completed, because PR is not in mergeable state")
       }
     }
 }
 
-
+def postPRComment(def commentBody) {
+    def requestBody = /{"body":"${commentBody}"}/
+    writeFile file: 'body.json', text: requestBody
+    withCredentials([string(credentialsId: 'github-access-token', variable: 'token')]) {
+        def output = sh returnStdout: true, script: "curl -X POST -H 'Authorization: token ${token}' https://api.github.com/repos/${ghprbGhRepository}/issues/${ghprbPullId}/comments -d @body.json"
+        echo output
+    }
+}
 
 
 node() {
@@ -88,15 +96,11 @@ node() {
     try {
 
         checkMergeStateStatus()
-        //checkout app
         checkoutRepository(repoDir)
         mergePRLocally(repoDir)
-
         buildApplication(repoDir)
         buildAndPushDockerImage(repoDir, registryURL, imageNamespace, imageTag)
-        //review tests somehow
         pushChangesToRemote(repoDir)
-        //approve the PR
         if (ghprbTargetBranch.equals('main')) {
             pushImageAsLatest(registryURL, imageNamespace, imageTag)
         }
