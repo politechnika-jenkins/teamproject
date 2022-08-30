@@ -94,20 +94,43 @@ node() {
     def imageTag = "${ghprbTargetBranch}_${ghprbPullId}"
 
     try {
-
+        //w pierwszej kolejności skrypt sprawdza, czy PR jest w odpowiednim statusie
+        // zasady "mergowalności" są określone w repozytorium, więc wszelkie obliczenia dokonuje GitHub i zwraca tylko status poprzez API
         checkMergeStateStatus()
+
+        //dalej skrypt klonuje repozytorium na gałęzi docelowej
         checkoutRepository(repoDir)
+
+        //do gałęzi docelowej jest wykonywana operacja "git merge"
+        //w ten sposób skrypt lokalnie odwzorowuje wersje aplikacji, która zostanie uzyskana w wyniku akceptacji PR
+        //dzięki temu docelowo na serwerze znajdzie się dokładnie taka aplikacja, jaka na gałęzi main
         mergePRLocally(repoDir)
+
+        //aplikacja jest budowana przy pomocy Mavena, zgodnie z procesem określonym w pom.xml
         buildApplication(repoDir)
+
+        //budowany jest obraz Docker, zgodnie z procesem określonym w pliku Dockerfile
+        //obraz budowany jest z unikalnym tagiem zbudowanym z nazwy gałęzi docelowej oraz numeru PR
+        //dzięki temu obraz jest unikalny i łatwo wyszukiwalny w rejestrze ACR
         buildAndPushDockerImage(repoDir, registryURL, imageNamespace, imageTag)
+
+        //po pomyślnym zbudowaniu aplikacji skrypt wykonuje "git push" do GitHuba
+        //GitHub wykrywa operację automatycznie i akceptuje PR - nie jest konieczna dodatkowa operacja
         pushChangesToRemote(repoDir)
+
+        //jeśli gałąź docelowa to main, to do zbudowanego wcześniej obrazu jest dodawany również tag latest
+        //dzięki temu aplikacja w Azure automatycznie będzie pobierała najnowszą wersję z gałęzi "main"
         if (ghprbTargetBranch.equals('main')) {
             pushImageAsLatest(registryURL, imageNamespace, imageTag)
         }
     } catch (err) {
+        //metoda obsługująca błędy (systemowe bądź wytworzone metodą 'error()'
+        //wyświetli informacje o błędzie w logach oraz w komentarzu w GitHubie
         handleError(err)
 
     } finally {
+        //metoda wbudowana, czyści workspace Jenkinsa
+        //dzięki temu każde wykonanie otrzymuje nowe, czyste środowisko działania
         cleanWs()
     }
 

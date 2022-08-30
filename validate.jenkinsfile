@@ -39,20 +39,23 @@ node() {
     def repoDir = 'application_repository'
     try {
 
-        //checkout app
+        //skrypt klonuje repozytorium na gałęzi źródłowej
         checkoutRepository(repoDir)
-        //build and test app
 
+        //skrypt uruchamia testy określone w pom.xml przy użyciu Mavena
         testApplication(repoDir)
-        //review tests somehow
+
+        //jeśli powyższy krok zakończył się sukcesem, to znaczy, że testy się powiodły
+        //skrypt przy pomocy użytkownika technicznego (politechnika-jenkins) wystawia "approval"
         reviewPullRequest(true)
-        //approve the PR
 
     } catch (err) {
+        //w przypadku wystąpienia błędu (na przykład niepowodzenia w testach) skrypt wystawia komentarz z opcją "request changes"
         reviewPullRequest(false)
         handleError(err)
 
     } finally {
+        //skrypt czyści workspace, aby kolejne wykonanie otrzymało czyste środowisko wykonania
         cleanWs()
     }
 
