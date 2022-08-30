@@ -71,7 +71,7 @@ def checkMergeStateStatus() {
        writeFile file: 'output.json', text: output
       def stateStatus = sh returnStdout: true, script: "jq -r '.data.repository.pullRequest.mergeStateStatus' output.json"
       echo stateStatus
-      if (!stateStatus.equals("CLEAR")) {
+      if (!stateStatus.equals("CLEAR") && !stateStatus.equals("UNSTABLE")) {
         error("Deployment cannot be completed, because PR is not in mergeable state")
       }
     }
